@@ -26,7 +26,7 @@ class CryptoTradingBot:
         self.exchange = ccxt.kraken({
             'apiKey': self.kraken_api_key,
             'secret': self.kraken_secret,
-            'sandbox': True,  # Set to True for testing
+            'sandbox': False,  # Set to True for testing
         })
         
         # Trading settings
@@ -123,27 +123,45 @@ class CryptoTradingBot:
             return {}
     
     def get_portfolio_status(self) -> Dict:
-        """Get current portfolio status"""
-        conn = sqlite3.connect('trading_bot.db')
-        cursor = conn.cursor()
-        
-        cursor.execute('SELECT symbol, amount, avg_price FROM portfolio')
-        positions = cursor.fetchall()
-        
-        portfolio = {
-            'cash': self.portfolio_value,
-            'positions': {},
-            'total_value': self.portfolio_value
-        }
-        
-        for symbol, amount, avg_price in positions:
-            portfolio['positions'][symbol] = {
-                'amount': amount,
-                'avg_price': avg_price
+        """Get current portfolio status from Kraken"""
+        try:
+            # Get real account balance from Kraken
+            balance = self.exchange.fetch_balance()
+            
+            portfolio = {
+                'cash': balance.get('USD', {}).get('free', 0),
+                'positions': {},
+                'total_value': 0
             }
             
-        conn.close()
-        return portfolio
+            # Add crypto positions
+            for symbol in ['XRP', 'BTC']:
+                if balance.get(symbol, {}).get('total', 0) > 0:
+                    portfolio['positions'][symbol] = {
+                        'amount': balance[symbol]['total'],
+                        'free': balance[symbol]['free'],
+                        'used': balance[symbol]['used']
+                    }
+            
+            # Calculate total portfolio value
+            price_data = self.get_price_data()
+            portfolio['total_value'] = portfolio['cash']
+            
+            for symbol, position in portfolio['positions'].items():
+                if symbol in price_data:
+                    portfolio['total_value'] += position['amount'] * price_data[symbol]['price']
+            
+            logger.info(f"Real portfolio: ${portfolio['cash']:.2f} cash, {len(portfolio['positions'])} positions")
+            return portfolio
+            
+        except Exception as e:
+            logger.error(f"Error fetching real balance: {e}")
+            # Fallback to fake portfolio for testing
+            return {
+                'cash': 1000,
+                'positions': {},
+                'total_value': 1000
+            }
     
     def analyze_with_claude(self, news_data: List[Dict], price_data: Dict, portfolio: Dict) -> Dict:
         """Send data to Claude for analysis and trading decision"""
@@ -156,33 +174,39 @@ class CryptoTradingBot:
         
         # Create prompt for Claude
         prompt = f"""
-        You are a cryptocurrency trading advisor. Analyze the following data and provide a specific trading recommendation.
+        You are an expert cryptocurrency trading advisor. Analyze the market data and provide ONE specific trading recommendation.
 
         CURRENT MARKET DATA:
-        XRP Price: ${price_data.get('XRP', {}).get('price', 'N/A')}
-        XRP 24h Change: {price_data.get('XRP', {}).get('change_24h', 'N/A')}%
-        BTC Price: ${price_data.get('BTC', {}).get('price', 'N/A')}
-        BTC 24h Change: {price_data.get('BTC', {}).get('change_24h', 'N/A')}%
+        XRP: ${price_data.get('XRP', {}).get('price', 'N/A')} (24h: {price_data.get('XRP', {}).get('change_24h', 'N/A')}%)
+        BTC: ${price_data.get('BTC', {}).get('price', 'N/A')} (24h: {price_data.get('BTC', {}).get('change_24h', 'N/A')}%)
 
-        RECENT NEWS:
+        RECENT NEWS HEADLINES:
         {news_summary}
 
-        CURRENT PORTFOLIO:
-        Cash: ${portfolio.get('cash', 0)}
-        Positions: {portfolio.get('positions', {})}
+        PORTFOLIO STATUS:
+        Available USD: ${portfolio.get('cash', 0):.2f}
+        Total Portfolio Value: ${portfolio.get('total_value', 0):.2f}
+        Current Positions: {portfolio.get('positions', {})}
 
         TRADING RULES:
-        - Maximum position size: 10% of portfolio value
-        - Focus on XRP regulatory catalysts and BTC macro trends
-        - Only trade when there's a clear edge
-        - Always provide specific reasoning
+        - Maximum position: $100 per trade
+        - Only trade with confidence 7+ out of 10
+        - Focus on XRP regulatory news and BTC macro trends
+        - Provide specific reasoning
 
-        Provide your recommendation in this exact format:
+        REQUIRED FORMAT:
         ACTION: [BUY/SELL/HOLD]
-        SYMBOL: [XRP or BTC]
-        AMOUNT: [$X or X coins]
-        REASONING: [Your detailed analysis]
-        CONFIDENCE: [1-10]
+        SYMBOL: [XRP or BTC]  
+        AMOUNT: [Dollar amount like $50]
+        REASONING: [2-3 sentences explaining your decision]
+        CONFIDENCE: [Number 1-10]
+
+        Example:
+        ACTION: BUY
+        SYMBOL: XRP
+        AMOUNT: $75
+        REASONING: Fed master account approval signals increased 40% based on timeline analysis. Social sentiment positive but price hasn't reflected regulatory progress yet.
+        CONFIDENCE: 8
         """
         
         try:
