@@ -26,7 +26,7 @@ class CryptoTradingBot:
         self.exchange = ccxt.kraken({
             'apiKey': self.kraken_api_key,
             'secret': self.kraken_secret,
-            'sandbox': False,  # Set to True for testing
+            'sandbox': True,  # Set to True for testing
         })
         
         # Trading settings
