@@ -129,7 +129,7 @@ class CryptoTradingBot:
             balance = self.exchange.fetch_balance()
             
             portfolio = {
-                'cash': balance.get('USD', {}).get('free', 0),
+                'cash': balance.get('USD', {}).get('free', 0) or 0,
                 'positions': {},
                 'total_value': 0
             }
@@ -143,13 +143,8 @@ class CryptoTradingBot:
                         'used': balance[symbol]['used']
                     }
             
-            # Calculate total portfolio value
-            price_data = self.get_price_data()
-            portfolio['total_value'] = portfolio['cash']
-            
-            for symbol, position in portfolio['positions'].items():
-                if symbol in price_data:
-                    portfolio['total_value'] += position['amount'] * price_data[symbol]['price']
+            # Calculate total portfolio value (simplified)
+            portfolio['total_value'] = portfolio['cash'] or 0
             
             logger.info(f"Real portfolio: ${portfolio['cash']:.2f} cash, {len(portfolio['positions'])} positions")
             return portfolio
@@ -264,6 +259,13 @@ class CryptoTradingBot:
             return
             
         symbol = decision['symbol']
+        
+        # Convert symbol format for Kraken
+        if symbol == 'BTC':
+            symbol = 'BTC/USD'
+        elif symbol == 'XRP':
+            symbol = 'XRP/USD'
+            
         if symbol not in self.trading_pairs:
             logger.error(f"Invalid symbol: {symbol}")
             return
