@@ -3,3 +3,5 @@ anthropic==0.28.1
 ccxt==4.0.77
 flask==2.3.3
 httpx==0.24.1
+pandas==2.0.3
+numpy==1.24.3
