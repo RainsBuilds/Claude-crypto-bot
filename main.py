@@ -349,7 +349,7 @@ class CryptoTradingBot:
                 
                 # Wait 1 hour before next cycle
                 logger.info("Waiting 1 hour for next cycle...")
-                time.sleep(3600)
+                time.sleep(300)
                 
             except KeyboardInterrupt:
                 logger.info("Bot stopped by user")
