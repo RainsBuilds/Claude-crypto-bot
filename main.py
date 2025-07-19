@@ -10,6 +10,9 @@ import anthropic
 import ccxt
 import pandas as pd
 import numpy as np
+from flask import Flask, render_template, jsonify, request
+import threading
+import queue
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -36,6 +39,13 @@ class CryptoTradingBot:
         self.max_position_size = 0.1  # Max 10% of portfolio per trade
         self.trading_pairs = ['XRP/USD', 'BTC/USD']
         self.paper_trading = True  # Set to False for real trading
+        self.trading_active = True  # Can be toggled via web interface
+        self.scan_interval = 300  # 5 minutes in seconds
+        
+        # Dashboard data
+        self.last_decision = {}
+        self.recent_decisions = []
+        self.last_update = None
         
         # Initialize database
         self.init_database()
@@ -59,13 +69,17 @@ class CryptoTradingBot:
             )
         ''')
         
-        # Create portfolio table
+        # Create recent decisions table
         cursor.execute('''
-            CREATE TABLE IF NOT EXISTS portfolio (
-                symbol TEXT PRIMARY KEY,
+            CREATE TABLE IF NOT EXISTS decisions (
+                id INTEGER PRIMARY KEY,
+                timestamp TEXT,
+                action TEXT,
+                symbol TEXT,
                 amount REAL,
-                avg_price REAL,
-                last_updated TEXT
+                reasoning TEXT,
+                confidence INTEGER,
+                executed BOOLEAN
             )
         ''')
         
@@ -387,7 +401,63 @@ class CryptoTradingBot:
         except Exception as e:
             logger.error(f"Error executing trade: {e}")
     
-    def record_trade(self, decision: Dict, current_prices: Dict):
+    def record_decision(self, decision: Dict, executed: bool = False):
+        """Record Claude's decision in database"""
+        conn = sqlite3.connect('trading_bot.db')
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            INSERT INTO decisions (timestamp, action, symbol, amount, reasoning, confidence, executed)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        ''', (
+            datetime.now().isoformat(),
+            decision.get('action', 'HOLD'),
+            decision.get('symbol', ''),
+            decision.get('amount', 0),
+            decision.get('reasoning', ''),
+            decision.get('confidence', 0),
+            executed
+        ))
+        
+        conn.commit()
+        conn.close()
+        
+        # Update in-memory data for dashboard
+        decision_with_time = decision.copy()
+        decision_with_time['timestamp'] = datetime.now().strftime('%H:%M:%S')
+        decision_with_time['executed'] = executed
+        
+        self.last_decision = decision_with_time
+        self.recent_decisions.insert(0, decision_with_time)
+        if len(self.recent_decisions) > 10:
+            self.recent_decisions.pop()
+    
+    def get_recent_decisions(self, limit: int = 10) -> List[Dict]:
+        """Get recent decisions from database"""
+        conn = sqlite3.connect('trading_bot.db')
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            SELECT timestamp, action, symbol, amount, reasoning, confidence, executed
+            FROM decisions 
+            ORDER BY timestamp DESC 
+            LIMIT ?
+        ''', (limit,))
+        
+        decisions = []
+        for row in cursor.fetchall():
+            decisions.append({
+                'timestamp': row[0],
+                'action': row[1],
+                'symbol': row[2],
+                'amount': row[3],
+                'reasoning': row[4],
+                'confidence': row[5],
+                'executed': bool(row[6])
+            })
+        
+        conn.close()
+        return decisions
         """Record trade in database"""
         conn = sqlite3.connect('trading_bot.db')
         cursor = conn.cursor()
@@ -411,6 +481,10 @@ class CryptoTradingBot:
     
     def run_trading_cycle(self):
         """Run one complete trading cycle"""
+        if not self.trading_active:
+            logger.info("Trading is paused")
+            return
+            
         logger.info("Starting trading cycle...")
         
         # Gather data
@@ -433,10 +507,16 @@ class CryptoTradingBot:
         logger.info(f"Claude decision: {decision}")
         
         # Execute trade if confidence is high enough
+        executed = False
         if decision.get('confidence', 0) >= 7:
             self.execute_trade(decision, price_data)
+            executed = True
         else:
             logger.info(f"Confidence too low ({decision.get('confidence')}) - no trade executed")
+        
+        # Record decision
+        self.record_decision(decision, executed)
+        self.last_update = datetime.now()
     
     def run_bot(self):
         """Main bot loop"""
@@ -446,9 +526,9 @@ class CryptoTradingBot:
             try:
                 self.run_trading_cycle()
                 
-                # Wait 5 minutes before next cycle
-                logger.info("Waiting 5 minutes for next cycle...")
-                time.sleep(300)
+                # Wait based on scan interval
+                logger.info(f"Waiting {self.scan_interval // 60} minutes for next cycle...")
+                time.sleep(self.scan_interval)
                 
             except KeyboardInterrupt:
                 logger.info("Bot stopped by user")
@@ -457,6 +537,123 @@ class CryptoTradingBot:
                 logger.error(f"Error in main loop: {e}")
                 time.sleep(300)  # Wait 5 minutes on error
 
-if __name__ == "__main__":
+# Flask Web Dashboard
+app = Flask(__name__, template_folder='templates')
+bot = None
+
+@app.route('/')
+def dashboard():
+    """Main dashboard page"""
+    return render_template('dashboard.html')
+
+@app.route('/api/status')
+def api_status():
+    """Get current bot status"""
+    try:
+        if not bot:
+            return jsonify({'error': 'Bot not initialized yet'}), 500
+        
+        portfolio = bot.get_portfolio_status()
+        price_data = bot.get_price_data()
+        
+        # Calculate portfolio value with current prices
+        total_value = portfolio.get('cash', 0)
+        for symbol, position in portfolio.get('positions', {}).items():
+            if symbol in price_data:
+                total_value += position['amount'] * price_data[symbol]['price']
+        
+        return jsonify({
+            'trading_active': bot.trading_active,
+            'paper_trading': bot.paper_trading,
+            'portfolio': {
+                'cash': portfolio.get('cash', 0),
+                'positions': portfolio.get('positions', {}),
+                'total_value': total_value
+            },
+            'prices': price_data,
+            'last_decision': getattr(bot, 'last_decision', {}),
+            'recent_decisions': getattr(bot, 'recent_decisions', [])[:5],
+            'last_update': bot.last_update.isoformat() if getattr(bot, 'last_update', None) else None,
+            'scan_interval': bot.scan_interval
+        })
+    except Exception as e:
+        logger.error(f"API status error: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/toggle_trading', methods=['POST'])
+def toggle_trading():
+    """Toggle trading on/off"""
+    try:
+        if not bot:
+            return jsonify({'error': 'Bot not initialized'}), 500
+        
+        bot.trading_active = not bot.trading_active
+        status = "activated" if bot.trading_active else "paused"
+        logger.info(f"Trading {status} via web interface")
+        
+        return jsonify({
+            'trading_active': bot.trading_active,
+            'message': f'Trading {status}'
+        })
+    except Exception as e:
+        logger.error(f"Toggle trading error: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/toggle_paper_mode', methods=['POST'])
+def toggle_paper_mode():
+    """Toggle paper trading mode"""
+    try:
+        if not bot:
+            return jsonify({'error': 'Bot not initialized'}), 500
+        
+        bot.paper_trading = not bot.paper_trading
+        mode = "paper" if bot.paper_trading else "live"
+        logger.info(f"Switched to {mode} trading via web interface")
+        
+        return jsonify({
+            'paper_trading': bot.paper_trading,
+            'message': f'Switched to {mode} trading'
+        })
+    except Exception as e:
+        logger.error(f"Toggle paper mode error: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/set_interval', methods=['POST'])
+def set_scan_interval():
+    """Set scan interval"""
+    try:
+        if not bot:
+            return jsonify({'error': 'Bot not initialized'}), 500
+        
+        data = request.get_json()
+        interval_minutes = data.get('interval', 5)
+        bot.scan_interval = interval_minutes * 60
+        
+        logger.info(f"Scan interval set to {interval_minutes} minutes via web interface")
+        
+        return jsonify({
+            'scan_interval': bot.scan_interval,
+            'message': f'Scan interval set to {interval_minutes} minutes'
+        })
+    except Exception as e:
+        logger.error(f"Set interval error: {e}")
+        return jsonify({'error': str(e)}), 500
+
+def run_flask_app():
+    """Run Flask app in a separate thread"""
+    logger.info("Starting Flask dashboard on port 8080...")
+    app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 8080)), debug=False, threaded=True)
+
+def run_trading_bot():
+    """Run trading bot in main thread"""
+    global bot
     bot = CryptoTradingBot()
     bot.run_bot()
+
+if __name__ == "__main__":
+    # Start Flask app in background thread
+    flask_thread = threading.Thread(target=run_flask_app, daemon=True)
+    flask_thread.start()
+    
+    # Run trading bot in main thread
+    run_trading_bot()
