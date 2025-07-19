@@ -28,7 +28,7 @@ class CryptoTradingBot:
         self.exchange = ccxt.kraken({
             'apiKey': self.kraken_api_key,
             'secret': self.kraken_secret,
-            'sandbox': False,  # Set to True for testing
+            'sandbox': True,  # Set to True for testing
         })
         
         # Trading settings
@@ -192,40 +192,6 @@ class CryptoTradingBot:
             return {}
     
     def get_portfolio_status(self) -> Dict:
-        """Get current portfolio status from Kraken"""
-        try:
-            # Get real account balance from Kraken
-            balance = self.exchange.fetch_balance()
-            
-            portfolio = {
-                'cash': balance.get('USD', {}).get('free', 0) or 0,
-                'positions': {},
-                'total_value': 0
-            }
-            
-            # Add crypto positions
-            for symbol in ['XRP', 'BTC']:
-                if balance.get(symbol, {}).get('total', 0) > 0:
-                    portfolio['positions'][symbol] = {
-                        'amount': balance[symbol]['total'],
-                        'free': balance[symbol]['free'],
-                        'used': balance[symbol]['used']
-                    }
-            
-            # Calculate total portfolio value (simplified)
-            portfolio['total_value'] = portfolio['cash'] or 0
-            
-            logger.info(f"Real portfolio: ${portfolio['cash']:.2f} cash, {len(portfolio['positions'])} positions")
-            return portfolio
-            
-        except Exception as e:
-            logger.error(f"Error fetching real balance: {e}")
-            # Fallback to fake portfolio for testing
-            return {
-                'cash': 1000,
-                'positions': {},
-                'total_value': 1000
-            }
         """Get current portfolio status from Kraken"""
         try:
             # Get real account balance from Kraken
@@ -464,23 +430,23 @@ class CryptoTradingBot:
             logger.info(f"Confidence too low ({decision.get('confidence')}) - no trade executed")
     
     def run_bot(self):
-    """Main bot loop"""
-    logger.info("Starting Claude Crypto Trading Bot...")
-    
-    while True:
-        try:
-            self.run_trading_cycle()
-            
-            # Wait 5 minutes before next cycle
-            logger.info("Waiting 5 minutes for next cycle...")
-            time.sleep(300)
-            
-        except KeyboardInterrupt:
-            logger.info("Bot stopped by user")
-            break
-        except Exception as e:
-            logger.error(f"Error in main loop: {e}")
-            time.sleep(300)  # Wait 5 minutes on error
+        """Main bot loop"""
+        logger.info("Starting Claude Crypto Trading Bot...")
+        
+        while True:
+            try:
+                self.run_trading_cycle()
+                
+                # Wait 5 minutes before next cycle
+                logger.info("Waiting 5 minutes for next cycle...")
+                time.sleep(300)
+                
+            except KeyboardInterrupt:
+                logger.info("Bot stopped by user")
+                break
+            except Exception as e:
+                logger.error(f"Error in main loop: {e}")
+                time.sleep(300)  # Wait 5 minutes on error
 
 if __name__ == "__main__":
     bot = CryptoTradingBot()
