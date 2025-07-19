@@ -1,0 +1,705 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Claude Crypto Trading Bot</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: #0a0a0a;
+            color: #ffffff;
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+
+        .background-grid {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-image: 
+                linear-gradient(rgba(255,255,255,0.02) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(255,255,255,0.02) 1px, transparent 1px);
+            background-size: 20px 20px;
+            z-index: -1;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px;
+            position: relative;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 40px;
+            position: relative;
+        }
+
+        .header::before {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 300px;
+            height: 300px;
+            background: radial-gradient(circle, rgba(0, 255, 157, 0.1) 0%, transparent 70%);
+            border-radius: 50%;
+            z-index: -1;
+        }
+
+        .header h1 {
+            font-size: 3em;
+            font-weight: 700;
+            background: linear-gradient(135deg, #00ff9d, #00d4ff);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 15px;
+            letter-spacing: -1px;
+        }
+
+        .status-bar {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 20px;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 50px;
+            padding: 12px 30px;
+            backdrop-filter: blur(20px);
+            display: inline-flex;
+        }
+
+        .status-indicator {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            animation: pulse 2s infinite;
+        }
+
+        .status-active { 
+            background: #00ff9d;
+            box-shadow: 0 0 20px rgba(0, 255, 157, 0.5);
+        }
+        
+        .status-paused { 
+            background: #ff4757;
+            box-shadow: 0 0 20px rgba(255, 71, 87, 0.5);
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .dashboard-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+            gap: 25px;
+            margin-bottom: 30px;
+        }
+
+        .card {
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 20px;
+            padding: 30px;
+            backdrop-filter: blur(20px);
+            position: relative;
+            overflow: hidden;
+            transition: all 0.3s ease;
+        }
+
+        .card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 2px;
+            background: linear-gradient(90deg, transparent, rgba(0, 255, 157, 0.5), transparent);
+        }
+
+        .card:hover {
+            transform: translateY(-5px);
+            border-color: rgba(0, 255, 157, 0.3);
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+        }
+
+        .card-header {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 25px;
+        }
+
+        .card-icon {
+            font-size: 1.5em;
+            filter: drop-shadow(0 0 10px currentColor);
+        }
+
+        .card h3 {
+            font-size: 1.3em;
+            font-weight: 600;
+            color: #ffffff;
+            letter-spacing: -0.5px;
+        }
+
+        .portfolio-value {
+            font-size: 3em;
+            font-weight: 700;
+            background: linear-gradient(135deg, #00ff9d, #00d4ff);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 20px;
+            line-height: 1;
+        }
+
+        .metric-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 15px 0;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .metric-row:last-child {
+            border-bottom: none;
+        }
+
+        .metric-label {
+            font-weight: 500;
+            opacity: 0.7;
+        }
+
+        .metric-value {
+            font-weight: 600;
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        .decision-card {
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid rgba(255, 255, 255, 0.06);
+            border-radius: 15px;
+            padding: 20px;
+            margin-bottom: 15px;
+            transition: all 0.3s ease;
+        }
+
+        .decision-card:hover {
+            background: rgba(255, 255, 255, 0.04);
+            border-color: rgba(0, 255, 157, 0.2);
+        }
+
+        .decision-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+        }
+
+        .action-badge {
+            padding: 6px 16px;
+            border-radius: 25px;
+            font-size: 0.85em;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .action-buy { 
+            background: rgba(0, 255, 157, 0.2);
+            color: #00ff9d;
+            border: 1px solid rgba(0, 255, 157, 0.3);
+        }
+        
+        .action-sell { 
+            background: rgba(255, 71, 87, 0.2);
+            color: #ff4757;
+            border: 1px solid rgba(255, 71, 87, 0.3);
+        }
+        
+        .action-hold { 
+            background: rgba(255, 184, 0, 0.2);
+            color: #ffb800;
+            border: 1px solid rgba(255, 184, 0, 0.3);
+        }
+
+        .confidence-bar {
+            width: 100%;
+            height: 4px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 2px;
+            overflow: hidden;
+            margin-top: 10px;
+        }
+
+        .confidence-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #ff4757, #ffb800, #00ff9d);
+            border-radius: 2px;
+            transition: width 0.5s ease;
+        }
+
+        .reasoning {
+            font-size: 0.95em;
+            line-height: 1.5;
+            opacity: 0.8;
+            margin-top: 15px;
+        }
+
+        .price-grid {
+            display: grid;
+            gap: 15px;
+        }
+
+        .price-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 15px;
+            background: rgba(255, 255, 255, 0.02);
+            border-radius: 12px;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .price-symbol {
+            font-weight: 600;
+            font-size: 1.1em;
+        }
+
+        .price-data {
+            text-align: right;
+        }
+
+        .price-value {
+            font-weight: 700;
+            font-size: 1.2em;
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        .price-change {
+            font-size: 0.9em;
+            font-weight: 500;
+        }
+
+        .price-up { color: #00ff9d; }
+        .price-down { color: #ff4757; }
+
+        .controls-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-top: 25px;
+        }
+
+        .btn {
+            padding: 15px 25px;
+            border: none;
+            border-radius: 12px;
+            font-size: 1em;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+            background: rgba(255, 255, 255, 0.05);
+            color: white;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .btn::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.1), transparent);
+            transition: left 0.5s;
+        }
+
+        .btn:hover::before {
+            left: 100%;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            border-color: rgba(0, 255, 157, 0.5);
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, rgba(0, 255, 157, 0.2), rgba(0, 212, 255, 0.2));
+            border-color: rgba(0, 255, 157, 0.3);
+        }
+
+        .btn-danger {
+            background: linear-gradient(135deg, rgba(255, 71, 87, 0.2), rgba(255, 107, 129, 0.2));
+            border-color: rgba(255, 71, 87, 0.3);
+        }
+
+        .loading {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 40px;
+            opacity: 0.5;
+        }
+
+        .loading::after {
+            content: '';
+            width: 20px;
+            height: 20px;
+            border: 2px solid rgba(0, 255, 157, 0.3);
+            border-radius: 50%;
+            border-top-color: #00ff9d;
+            animation: spin 1s ease-in-out infinite;
+            margin-left: 10px;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .last-update {
+            text-align: center;
+            opacity: 0.4;
+            font-size: 0.9em;
+            margin-top: 30px;
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        .full-width {
+            grid-column: 1 / -1;
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                padding: 15px;
+            }
+            
+            .header h1 {
+                font-size: 2.5em;
+            }
+            
+            .dashboard-grid {
+                grid-template-columns: 1fr;
+                gap: 20px;
+            }
+            
+            .card {
+                padding: 25px;
+            }
+            
+            .portfolio-value {
+                font-size: 2.5em;
+            }
+        }
+
+        /* Custom scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: rgba(255, 255, 255, 0.05);
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: rgba(0, 255, 157, 0.3);
+            border-radius: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: rgba(0, 255, 157, 0.5);
+        }
+    </style>
+</head>
+<body>
+    <div class="background-grid"></div>
+    
+    <div class="container">
+        <div class="header">
+            <h1>CLAUDE TRADER</h1>
+            <div class="status-bar">
+                <span class="status-indicator status-active"></span>
+                <span id="bot-status">Initializing...</span>
+            </div>
+        </div>
+
+        <div class="dashboard-grid">
+            <!-- Portfolio Card -->
+            <div class="card">
+                <div class="card-header">
+                    <span class="card-icon">💰</span>
+                    <h3>Portfolio</h3>
+                </div>
+                <div id="portfolio-content" class="loading">Loading portfolio data...</div>
+            </div>
+
+            <!-- Claude's Decision Card -->
+            <div class="card">
+                <div class="card-header">
+                    <span class="card-icon">🧠</span>
+                    <h3>Claude's Analysis</h3>
+                </div>
+                <div id="decision-content" class="loading">Analyzing markets...</div>
+            </div>
+
+            <!-- Market Data Card -->
+            <div class="card">
+                <div class="card-header">
+                    <span class="card-icon">📊</span>
+                    <h3>Market Data</h3>
+                </div>
+                <div id="market-content" class="loading">Loading market data...</div>
+            </div>
+
+            <!-- Recent Decisions -->
+            <div class="card full-width">
+                <div class="card-header">
+                    <span class="card-icon">📈</span>
+                    <h3>Decision History</h3>
+                </div>
+                <div id="recent-decisions" class="loading">Loading decision history...</div>
+            </div>
+
+            <!-- Controls -->
+            <div class="card full-width">
+                <div class="card-header">
+                    <span class="card-icon">⚙️</span>
+                    <h3>Mission Control</h3>
+                </div>
+                <div class="controls-grid">
+                    <button id="toggle-trading" class="btn btn-primary">⏸️ Pause Trading</button>
+                    <button id="toggle-paper" class="btn btn-primary">🚀 Live Mode</button>
+                    <button id="refresh" class="btn">🔄 Refresh</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="last-update" id="last-update"></div>
+    </div>
+
+    <script>
+        let botData = null;
+
+        async function updateDashboard() {
+            try {
+                const response = await fetch('/api/status');
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                
+                const data = await response.json();
+                
+                if (data.error) {
+                    console.error('API Error:', data.error);
+                    return;
+                }
+
+                botData = data;
+                updateBotStatus(data);
+                updatePortfolio(data.portfolio, data.prices);
+                updateLatestDecision(data.last_decision);
+                updateMarketData(data.prices);
+                updateRecentDecisions(data.recent_decisions);
+                updateLastUpdate(data.last_update);
+                
+            } catch (error) {
+                console.error('Dashboard update failed:', error);
+                showError('Connection failed. Retrying...');
+            }
+        }
+
+        function showError(message) {
+            document.getElementById('bot-status').textContent = message;
+            document.querySelector('.status-indicator').className = 'status-indicator status-paused';
+        }
+
+        function updateBotStatus(data) {
+            const statusEl = document.getElementById('bot-status');
+            const indicator = document.querySelector('.status-indicator');
+            
+            if (data.trading_active) {
+                indicator.className = 'status-indicator status-active';
+                statusEl.textContent = `Active • ${data.paper_trading ? 'Paper Mode' : 'Live Trading'}`;
+            } else {
+                indicator.className = 'status-indicator status-paused';
+                statusEl.textContent = 'Paused';
+            }
+
+            // Update control buttons
+            document.getElementById('toggle-trading').textContent = 
+                data.trading_active ? '⏸️ Pause Trading' : '▶️ Start Trading';
+            document.getElementById('toggle-paper').textContent = 
+                data.paper_trading ? '🚀 Go Live' : '📝 Paper Mode';
+        }
+
+        function updatePortfolio(portfolio, prices) {
+            const content = document.getElementById('portfolio-content');
+            
+            let html = `<div class="portfolio-value">$${portfolio.total_value.toFixed(2)}</div>`;
+            
+            html += `<div class="metric-row">
+                <span class="metric-label">Available Cash</span>
+                <span class="metric-value">$${portfolio.cash.toFixed(2)}</span>
+            </div>`;
+            
+            for (const [symbol, position] of Object.entries(portfolio.positions)) {
+                const currentPrice = prices[symbol]?.price || 0;
+                const value = position.amount * currentPrice;
+                html += `<div class="metric-row">
+                    <span class="metric-label">${symbol}</span>
+                    <span class="metric-value">${position.amount.toFixed(4)} ($${value.toFixed(2)})</span>
+                </div>`;
+            }
+            
+            content.innerHTML = html;
+        }
+
+        function updateLatestDecision(decision) {
+            const content = document.getElementById('decision-content');
+            
+            if (!decision || !decision.action) {
+                content.innerHTML = '<div class="loading">Waiting for analysis...</div>';
+                return;
+            }
+            
+            const actionClass = `action-${decision.action.toLowerCase()}`;
+            const confidencePercent = (decision.confidence / 10) * 100;
+            
+            let html = `
+                <div class="decision-header">
+                    <span class="action-badge ${actionClass}">${decision.action}</span>
+                    <span style="opacity: 0.7; font-size: 0.9em;">${decision.confidence}/10</span>
+                </div>
+                <div class="confidence-bar">
+                    <div class="confidence-fill" style="width: ${confidencePercent}%"></div>
+                </div>
+            `;
+            
+            if (decision.symbol && decision.amount > 0) {
+                html += `<div style="margin: 15px 0; font-weight: 600;">${decision.symbol}: $${decision.amount}</div>`;
+            }
+            
+            html += `<div class="reasoning">${decision.reasoning}</div>`;
+            
+            if (decision.executed) {
+                html += `<div style="color: #00ff9d; margin-top: 15px; font-weight: 600;">✓ Executed</div>`;
+            }
+            
+            content.innerHTML = html;
+        }
+
+        function updateMarketData(prices) {
+            const content = document.getElementById('market-content');
+            
+            let html = '<div class="price-grid">';
+            for (const [symbol, data] of Object.entries(prices)) {
+                const changeClass = data.change_24h >= 0 ? 'price-up' : 'price-down';
+                const changeSymbol = data.change_24h >= 0 ? '+' : '';
+                
+                html += `
+                    <div class="price-item">
+                        <div class="price-symbol">${symbol}</div>
+                        <div class="price-data">
+                            <div class="price-value">$${data.price.toFixed(2)}</div>
+                            <div class="price-change ${changeClass}">${changeSymbol}${data.change_24h.toFixed(2)}%</div>
+                        </div>
+                    </div>
+                `;
+            }
+            html += '</div>';
+            
+            content.innerHTML = html;
+        }
+
+        function updateRecentDecisions(decisions) {
+            const content = document.getElementById('recent-decisions');
+            
+            if (!decisions || decisions.length === 0) {
+                content.innerHTML = '<div class="loading">No recent decisions</div>';
+                return;
+            }
+            
+            let html = '';
+            decisions.slice(0, 5).forEach(decision => {
+                const actionClass = `action-${decision.action.toLowerCase()}`;
+                const confidencePercent = (decision.confidence / 10) * 100;
+                
+                html += `
+                    <div class="decision-card">
+                        <div class="decision-header">
+                            <span class="action-badge ${actionClass}">${decision.action}</span>
+                            <span style="opacity: 0.5; font-size: 0.85em;">${decision.timestamp}</span>
+                        </div>
+                        <div class="confidence-bar">
+                            <div class="confidence-fill" style="width: ${confidencePercent}%"></div>
+                        </div>
+                        <div class="reasoning">${decision.reasoning.substring(0, 200)}${decision.reasoning.length > 200 ? '...' : ''}</div>
+                    </div>
+                `;
+            });
+            
+            content.innerHTML = html;
+        }
+
+        function updateLastUpdate(lastUpdate) {
+            const el = document.getElementById('last-update');
+            if (lastUpdate) {
+                const date = new Date(lastUpdate);
+                el.textContent = `LAST SYNC: ${date.toLocaleTimeString()}`;
+            }
+        }
+
+        // Control functions
+        async function toggleTrading() {
+            try {
+                const response = await fetch('/api/toggle_trading', { method: 'POST' });
+                await response.json();
+                updateDashboard();
+            } catch (error) {
+                console.error('Failed to toggle trading:', error);
+            }
+        }
+
+        async function togglePaperMode() {
+            try {
+                const response = await fetch('/api/toggle_paper_mode', { method: 'POST' });
+                await response.json();
+                updateDashboard();
+            } catch (error) {
+                console.error('Failed to toggle paper mode:', error);
+            }
+        }
+
+        // Event listeners
+        document.getElementById('toggle-trading').addEventListener('click', toggleTrading);
+        document.getElementById('toggle-paper').addEventListener('click', togglePaperMode);
+        document.getElementById('refresh').addEventListener('click', updateDashboard);
+
+        // Auto-refresh every 15 seconds
+        setInterval(updateDashboard, 15000);
+
+        // Initial load
+        updateDashboard();
+    </script>
+</body>
+</html>
