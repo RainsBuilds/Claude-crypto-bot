@@ -8,6 +8,8 @@ import logging
 from typing import Dict, List, Optional
 import anthropic
 import ccxt
+import pandas as pd
+import numpy as np
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -122,7 +124,72 @@ class CryptoTradingBot:
             logger.error(f"Error fetching prices: {e}")
             return {}
     
-    def get_portfolio_status(self) -> Dict:
+    def get_technical_analysis(self, symbol: str) -> Dict:
+        """Get technical indicators for a symbol"""
+        try:
+            # Get 1-hour candles for the last 100 periods
+            ohlcv = self.exchange.fetch_ohlcv(symbol, '1h', limit=100)
+            df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
+            
+            if len(df) < 20:
+                return {}
+            
+            # Calculate technical indicators
+            close_prices = df['close']
+            volumes = df['volume']
+            
+            # EMA (12 and 26 periods)
+            ema_12 = close_prices.ewm(span=12).mean().iloc[-1]
+            ema_26 = close_prices.ewm(span=26).mean().iloc[-1]
+            ema_signal = "BULLISH" if ema_12 > ema_26 else "BEARISH"
+            
+            # RSI (14 periods)
+            delta = close_prices.diff()
+            gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
+            loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
+            rs = gain / loss
+            rsi = 100 - (100 / (1 + rs))
+            current_rsi = rsi.iloc[-1]
+            
+            if current_rsi > 70:
+                rsi_signal = "OVERBOUGHT"
+            elif current_rsi < 30:
+                rsi_signal = "OVERSOLD"
+            else:
+                rsi_signal = "NEUTRAL"
+            
+            # Volume analysis (compare current to 20-period average)
+            avg_volume = volumes.rolling(window=20).mean().iloc[-1]
+            current_volume = volumes.iloc[-1]
+            volume_ratio = current_volume / avg_volume if avg_volume > 0 else 1
+            
+            if volume_ratio > 2:
+                volume_signal = "HIGH"
+            elif volume_ratio > 1.5:
+                volume_signal = "ELEVATED"
+            else:
+                volume_signal = "NORMAL"
+            
+            # Price change
+            current_price = close_prices.iloc[-1]
+            prev_price = close_prices.iloc[-2]
+            price_change = ((current_price - prev_price) / prev_price) * 100
+            
+            return {
+                'ema_12': round(ema_12, 2),
+                'ema_26': round(ema_26, 2),
+                'ema_signal': ema_signal,
+                'rsi': round(current_rsi, 2),
+                'rsi_signal': rsi_signal,
+                'volume_ratio': round(volume_ratio, 2),
+                'volume_signal': volume_signal,
+                'price_change_1h': round(price_change, 2),
+                'current_price': round(current_price, 2)
+            }
+            
+        except Exception as e:
+            logger.error(f"Error calculating technical analysis for {symbol}: {e}")
+            return {}
         """Get current portfolio status from Kraken"""
         try:
             # Get real account balance from Kraken
@@ -158,7 +225,7 @@ class CryptoTradingBot:
                 'total_value': 1000
             }
     
-    def analyze_with_claude(self, news_data: List[Dict], price_data: Dict, portfolio: Dict) -> Dict:
+    def analyze_with_claude(self, news_data: List[Dict], price_data: Dict, portfolio: Dict, technical_data: Dict) -> Dict:
         """Send data to Claude for analysis and trading decision"""
         
         # Prepare news summary
@@ -167,6 +234,17 @@ class CryptoTradingBot:
             for article in news_data[:5]
         ])
         
+        # Prepare technical analysis summary
+        tech_summary = ""
+        for symbol in ['XRP', 'BTC']:
+            if symbol in technical_data:
+                tech = technical_data[symbol]
+                tech_summary += f"\n{symbol} Technical Analysis:\n"
+                tech_summary += f"  EMA Signal: {tech.get('ema_signal', 'N/A')} (12: {tech.get('ema_12', 'N/A')}, 26: {tech.get('ema_26', 'N/A')})\n"
+                tech_summary += f"  RSI: {tech.get('rsi', 'N/A')} ({tech.get('rsi_signal', 'N/A')})\n"
+                tech_summary += f"  Volume: {tech.get('volume_signal', 'N/A')} ({tech.get('volume_ratio', 'N/A')}x average)\n"
+                tech_summary += f"  1h Price Change: {tech.get('price_change_1h', 'N/A')}%\n"
+        
         # Create prompt for Claude
         prompt = f"""
         You are an expert cryptocurrency trading advisor. Analyze the market data and provide ONE specific trading recommendation.
@@ -174,6 +252,9 @@ class CryptoTradingBot:
         CURRENT MARKET DATA:
         XRP: ${price_data.get('XRP', {}).get('price', 'N/A')} (24h: {price_data.get('XRP', {}).get('change_24h', 'N/A')}%)
         BTC: ${price_data.get('BTC', {}).get('price', 'N/A')} (24h: {price_data.get('BTC', {}).get('change_24h', 'N/A')}%)
+
+        TECHNICAL INDICATORS:
+        {tech_summary}
 
         RECENT NEWS HEADLINES:
         {news_summary}
@@ -186,21 +267,23 @@ class CryptoTradingBot:
         TRADING RULES:
         - Maximum position: $100 per trade
         - Only trade with confidence 7+ out of 10
-        - Focus on XRP regulatory news and BTC macro trends
+        - Consider BOTH technical signals AND news sentiment
+        - EMA crossovers and RSI levels are important
+        - High volume can confirm breakouts
         - Provide specific reasoning
 
         REQUIRED FORMAT:
         ACTION: [BUY/SELL/HOLD]
         SYMBOL: [XRP or BTC]  
         AMOUNT: [Dollar amount like $50]
-        REASONING: [2-3 sentences explaining your decision]
+        REASONING: [2-3 sentences combining technical and fundamental analysis]
         CONFIDENCE: [Number 1-10]
 
         Example:
         ACTION: BUY
         SYMBOL: XRP
         AMOUNT: $75
-        REASONING: Fed master account approval signals increased 40% based on timeline analysis. Social sentiment positive but price hasn't reflected regulatory progress yet.
+        REASONING: EMA 12 crossed above EMA 26 showing bullish momentum, RSI at 45 indicates room to run higher. Fed master account news provides fundamental catalyst while technical setup confirms entry timing.
         CONFIDENCE: 8
         """
         
@@ -324,12 +407,17 @@ class CryptoTradingBot:
         price_data = self.get_price_data()
         portfolio = self.get_portfolio_status()
         
+        # Get technical analysis for both symbols
+        technical_data = {}
+        for symbol in ['XRP/USD', 'BTC/USD']:
+            technical_data[symbol.split('/')[0]] = self.get_technical_analysis(symbol)
+        
         if not price_data:
             logger.error("No price data available - skipping cycle")
             return
             
-        # Get Claude's analysis
-        decision = self.analyze_with_claude(news_data, price_data, portfolio)
+        # Get Claude's analysis with technical data
+        decision = self.analyze_with_claude(news_data, price_data, portfolio, technical_data)
         
         logger.info(f"Claude decision: {decision}")
         
@@ -340,23 +428,23 @@ class CryptoTradingBot:
             logger.info(f"Confidence too low ({decision.get('confidence')}) - no trade executed")
     
     def run_bot(self):
-    """Main bot loop"""
-    logger.info("Starting Claude Crypto Trading Bot...")
-    
-    while True:
-        try:
-            self.run_trading_cycle()
-            
-            # Wait 5 minutes before next cycle
-            logger.info("Waiting 5 minutes for next cycle...")
-            time.sleep(300)
-            
-        except KeyboardInterrupt:
-            logger.info("Bot stopped by user")
-            break
-        except Exception as e:
-            logger.error(f"Error in main loop: {e}")
-            time.sleep(300)  # Wait 5 minutes on error
+        """Main bot loop"""
+        logger.info("Starting Claude Crypto Trading Bot...")
+        
+        while True:
+            try:
+                self.run_trading_cycle()
+                
+                # Wait 1 hour before next cycle
+                logger.info("Waiting 1 hour for next cycle...")
+                time.sleep(3600)
+                
+            except KeyboardInterrupt:
+                logger.info("Bot stopped by user")
+                break
+            except Exception as e:
+                logger.error(f"Error in main loop: {e}")
+                time.sleep(300)  # Wait 5 minutes on error
 
 if __name__ == "__main__":
     bot = CryptoTradingBot()
