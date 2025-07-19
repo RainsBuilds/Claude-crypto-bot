@@ -28,13 +28,14 @@ class CryptoTradingBot:
         self.exchange = ccxt.kraken({
             'apiKey': self.kraken_api_key,
             'secret': self.kraken_secret,
-            'sandbox': True,  # Set to True for testing
+            'sandbox': False,  # Kraken doesn't support sandbox mode
         })
         
         # Trading settings
         self.portfolio_value = 1000  # Starting portfolio value
         self.max_position_size = 0.1  # Max 10% of portfolio per trade
         self.trading_pairs = ['XRP/USD', 'BTC/USD']
+        self.paper_trading = True  # Set to False for real trading
         
         # Initialize database
         self.init_database()
@@ -354,7 +355,15 @@ class CryptoTradingBot:
         if symbol not in self.trading_pairs:
             logger.error(f"Invalid symbol: {symbol}")
             return
+        
+        # Paper trading mode - just log the trade
+        if self.paper_trading:
+            price = current_prices.get(decision['symbol'], {}).get('price', 'N/A')
+            logger.info(f"📝 PAPER TRADE: {decision['action']} ${decision['amount']} of {decision['symbol']} at ${price}")
+            logger.info(f"💭 Reasoning: {decision['reasoning']}")
+            return
             
+        # Real trading mode
         try:
             if decision['action'] == 'BUY':
                 # Execute buy order
@@ -362,7 +371,7 @@ class CryptoTradingBot:
                     symbol, 
                     decision['amount']
                 )
-                logger.info(f"BUY order executed: {order}")
+                logger.info(f"🚀 REAL BUY order executed: {order}")
                 
             elif decision['action'] == 'SELL':
                 # Execute sell order
@@ -370,7 +379,7 @@ class CryptoTradingBot:
                     symbol,
                     decision['amount']
                 )
-                logger.info(f"SELL order executed: {order}")
+                logger.info(f"🚀 REAL SELL order executed: {order}")
                 
             # Record trade in database
             self.record_trade(decision, current_prices)
