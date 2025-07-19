@@ -464,23 +464,23 @@ class CryptoTradingBot:
             logger.info(f"Confidence too low ({decision.get('confidence')}) - no trade executed")
     
     def run_bot(self):
-        """Main bot loop"""
-        logger.info("Starting Claude Crypto Trading Bot...")
-        
-        while True:
-            try:
-                self.run_trading_cycle()
-                
-                # Wait 1 hour before next cycle
-                logger.info("Waiting 1 hour for next cycle...")
-                time.sleep(3600)
-                
-            except KeyboardInterrupt:
-                logger.info("Bot stopped by user")
-                break
-            except Exception as e:
-                logger.error(f"Error in main loop: {e}")
-                time.sleep(300)  # Wait 5 minutes on error
+    """Main bot loop"""
+    logger.info("Starting Claude Crypto Trading Bot...")
+    
+    while True:
+        try:
+            self.run_trading_cycle()
+            
+            # Wait 5 minutes before next cycle
+            logger.info("Waiting 5 minutes for next cycle...")
+            time.sleep(300)
+            
+        except KeyboardInterrupt:
+            logger.info("Bot stopped by user")
+            break
+        except Exception as e:
+            logger.error(f"Error in main loop: {e}")
+            time.sleep(300)  # Wait 5 minutes on error
 
 if __name__ == "__main__":
     bot = CryptoTradingBot()
