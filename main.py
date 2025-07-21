@@ -458,6 +458,8 @@ class CryptoTradingBot:
         
         conn.close()
         return decisions
+    
+    def record_trade(self, decision: Dict, current_prices: Dict):
         """Record trade in database"""
         conn = sqlite3.connect('trading_bot.db')
         cursor = conn.cursor()
