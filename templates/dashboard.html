@@ -181,42 +181,47 @@
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
             background-clip: text;
-            margin-bottom: 20px;
+            margin-bottom: 25px;
             line-height: 1;
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
         }
 
-        .metric-row {
+        .portfolio-list {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+
+        .portfolio-item {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            padding: 12px 0;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-            min-height: 40px;
+            padding: 15px 20px;
+            margin-bottom: 10px;
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 12px;
+            transition: all 0.3s ease;
         }
 
-        .metric-row:last-child {
-            border-bottom: none;
+        .portfolio-item:hover {
+            background: rgba(255, 255, 255, 0.05);
+            border-color: rgba(0, 255, 157, 0.2);
         }
 
-        .metric-label {
+        .portfolio-label {
             font-weight: 500;
-            opacity: 0.7;
-            flex-shrink: 0;
-            margin-right: 15px;
+            font-size: 1.05em;
+            color: rgba(255, 255, 255, 0.9);
         }
 
-        .metric-value {
+        .portfolio-value {
             font-weight: 600;
             font-family: 'JetBrains Mono', monospace;
+            color: #00ff9d;
             text-align: right;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            flex: 1;
-            max-width: 150px;
         }
 
         .decision-content {
@@ -292,11 +297,23 @@
 
         .reasoning {
             font-size: 0.95em;
-            line-height: 1.5;
-            opacity: 0.8;
+            line-height: 1.6;
+            opacity: 0.9;
             margin-top: 15px;
             word-wrap: break-word;
             overflow-wrap: break-word;
+            text-align: left;
+        }
+
+        .analysis-text {
+            font-size: 1em;
+            line-height: 1.6;
+            opacity: 0.9;
+            margin-top: 15px;
+            word-wrap: break-word;
+            overflow-wrap: break-word;
+            text-align: left;
+            max-width: none;
         }
 
         .amount-display {
@@ -629,21 +646,27 @@
         function updatePortfolio(portfolio, prices) {
             const content = document.getElementById('portfolio-content');
             
-            let html = `<div class="portfolio-value">$${portfolio.total_value.toFixed(2)}</div>`;
+            let html = `<div class="portfolio-value">${portfolio.total_value.toFixed(2)}</div>`;
             
-            html += `<div class="metric-row">
-                <span class="metric-label">Available Cash</span>
-                <span class="metric-value">$${portfolio.cash.toFixed(2)}</span>
-            </div>`;
+            html += `<ul class="portfolio-list">`;
+            
+            html += `<li class="portfolio-item">
+                <span class="portfolio-label">💵 Available Cash</span>
+                <span class="portfolio-value">${portfolio.cash.toFixed(2)}</span>
+            </li>`;
             
             for (const [symbol, position] of Object.entries(portfolio.positions)) {
                 const currentPrice = prices[symbol]?.price || 0;
                 const value = position.amount * currentPrice;
-                html += `<div class="metric-row">
-                    <span class="metric-label">${symbol}</span>
-                    <span class="metric-value">${position.amount.toFixed(4)} ($${value.toFixed(2)})</span>
-                </div>`;
+                const emoji = symbol === 'BTC' ? '₿' : symbol === 'XRP' ? '🪙' : '💰';
+                
+                html += `<li class="portfolio-item">
+                    <span class="portfolio-label">${emoji} ${symbol}</span>
+                    <span class="portfolio-value">${position.amount.toFixed(4)} (${value.toFixed(2)})</span>
+                </li>`;
             }
+            
+            html += `</ul>`;
             
             content.innerHTML = html;
         }
@@ -670,10 +693,10 @@
             `;
             
             if (decision.symbol && decision.amount > 0) {
-                html += `<div class="amount-display">${decision.symbol}: $${decision.amount}</div>`;
+                html += `<div class="amount-display">${decision.symbol}: ${decision.amount}</div>`;
             }
             
-            html += `<div class="reasoning">${decision.reasoning}</div>`;
+            html += `<div class="analysis-text">${decision.reasoning}</div>`;
             
             if (decision.executed) {
                 html += `<div style="color: #00ff9d; margin-top: 15px; font-weight: 600;">✓ Executed</div>`;
