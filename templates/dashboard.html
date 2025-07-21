@@ -204,23 +204,18 @@
             display: flex;
             justify-content: space-between;
             align-items: center;
-            padding: 15px 20px;
-            margin-bottom: 10px;
-            background: rgba(255, 255, 255, 0.03);
-            border: 1px solid rgba(255, 255, 255, 0.08);
-            border-radius: 12px;
-            transition: all 0.3s ease;
+            padding: 15px 0;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
         }
 
-        .portfolio-item:hover {
-            background: rgba(255, 255, 255, 0.05);
-            border-color: rgba(0, 255, 157, 0.2);
+        .portfolio-item:last-child {
+            border-bottom: none;
         }
 
         .portfolio-label {
             font-weight: 500;
-            font-size: 1.05em;
-            color: rgba(255, 255, 255, 0.9);
+            font-size: 1em;
+            color: rgba(255, 255, 255, 0.8);
         }
 
         .portfolio-value {
