@@ -109,10 +109,16 @@
 
         .dashboard-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+            grid-template-columns: 1fr 1.5fr 1fr;
             gap: 25px;
             margin-bottom: 30px;
             align-items: start;
+        }
+
+        @media (max-width: 1200px) {
+            .dashboard-grid {
+                grid-template-columns: 1fr;
+            }
         }
 
         .card {
@@ -124,9 +130,9 @@
             position: relative;
             overflow: hidden;
             transition: all 0.3s ease;
-            min-height: 200px;
             display: flex;
             flex-direction: column;
+            width: 100%;
         }
 
         .card::before {
